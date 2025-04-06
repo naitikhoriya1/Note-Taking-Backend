@@ -3,10 +3,19 @@ require("dotenv").config();
 const config = require("./config.json");
 const mongoose = require("mongoose");
 
-mongoose.connect(config.connectionString);
+// Add proper MongoDB connection with error handling
+mongoose
+  .connect(config.connectionString)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+    console.log(
+      "Please check your MongoDB connection string or network connectivity"
+    );
+  });
 
 const User = require("./models/user.model");
-const Notes = require("./models/note.model");
+const Note = require("./models/note.model");
 
 const express = require("express");
 const cors = require("cors");
@@ -132,11 +141,11 @@ app.get("/get-user", authenticateToken, async (req, res) => {
   const isUser = await User.findOne({ _id: user._id });
 
   if (!isUser) {
-    return res.status(401);
+    return res.status(401).json({ error: true, message: "User not found" });
   }
   return res.json({
     user: {
-      fullName: isUser.fullName,
+      fullName: isUser.fullname,
       email: isUser.email,
       _id: isUser._id,
       createdOn: isUser.createdOn,
@@ -151,7 +160,7 @@ app.post("/add-note", authenticateToken, async (req, res) => {
   const { user } = req.user;
 
   if (!title) {
-    return res.json(400).json({ error: true, message: "Title is required" });
+    return res.status(400).json({ error: true, message: "Title is required" });
   }
   if (!content) {
     return res
@@ -181,27 +190,27 @@ app.post("/add-note", authenticateToken, async (req, res) => {
 
 // Edit Notes
 app.put("/edit-note/:noteId", authenticateToken, async (req, res) => {
-  const { noteId } = req.params.noteId;
+  const noteId = req.params.noteId;
   const { title, content, tags, isPinned } = req.body;
   const { user } = req.user;
 
   if (!title && !content && !tags) {
     return res
       .status(400)
-      .json({ error: true, message: "No changes provides" });
+      .json({ error: true, message: "No changes provided" });
   }
 
   try {
     const note = await Note.findOne({ _id: noteId, userId: user._id });
 
-    if (!notes) {
+    if (!note) {
       return res.status(404).json({ error: true, message: "Note not found" });
     }
 
     if (title) note.title = title;
     if (content) note.content = content;
     if (tags) note.tags = tags;
-    if (isPinned) note.isPinned = isPinned;
+    if (isPinned !== undefined) note.isPinned = isPinned;
 
     await note.save();
 
@@ -211,7 +220,7 @@ app.put("/edit-note/:noteId", authenticateToken, async (req, res) => {
       message: "Note updated successfully",
     });
   } catch (error) {
-    res.status(500).jsona({
+    return res.status(500).json({
       error: true,
       message: "Internal server error",
     });
@@ -223,14 +232,16 @@ app.get("/get-all-notes", authenticateToken, async (req, res) => {
   const { user } = req.user;
 
   try {
-    const notes = await User.find({ userId: user._id }).sort({ isPinned: -1 });
+    const notes = await Note.find({ userId: user._id }).sort({ isPinned: -1 });
     return res.json({
       error: false,
       notes,
-      message: "All notes successfully recieved",
+      message: "All notes successfully received",
     });
   } catch (error) {
-    res.status(500).json({ error: true, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ error: true, message: "Internal server error" });
   }
 });
 
@@ -239,11 +250,11 @@ app.delete("/delete-note/:noteId", authenticateToken, async (req, res) => {
   const noteId = req.params.noteId;
   const { user } = req.user;
   try {
-    const note = await Note.findOne({ id: noteId, userId: user._id });
+    const note = await Note.findOne({ _id: noteId, userId: user._id });
     if (!note) {
       return res.status(404).json({ error: true, message: "Note Not found" });
     }
-    await NativeErrorote.findOne({ id: noteId, userId: user._id });
+    await Note.deleteOne({ _id: noteId, userId: user._id });
     return res.json({
       error: false,
       message: "Note deleted successfully",
@@ -256,15 +267,15 @@ app.delete("/delete-note/:noteId", authenticateToken, async (req, res) => {
 });
 
 //Update isPinned value
-app.put("update-note-pinned/:noteId", authenticateToken, async (req, res) => {
-  const { noteId } = req.params.noteId;
+app.put("/update-note-pinned/:noteId", authenticateToken, async (req, res) => {
+  const noteId = req.params.noteId;
   const { isPinned } = req.body;
   const { user } = req.user;
 
   try {
     const note = await Note.findOne({ _id: noteId, userId: user._id });
 
-    if (!notes) {
+    if (!note) {
       return res.status(404).json({ error: true, message: "Note not found" });
     }
 
@@ -278,13 +289,17 @@ app.put("update-note-pinned/:noteId", authenticateToken, async (req, res) => {
       message: "Note updated successfully",
     });
   } catch (error) {
-    res.status(500).jsona({
+    return res.status(500).json({
       error: true,
       message: "Internal server error",
     });
   }
 });
 
-app.listen(8000);
+// Use port 4000 since 5000 is also in use
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 module.exports = app;
